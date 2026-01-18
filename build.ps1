@@ -1,4 +1,4 @@
-﻿# PIC24 Bootloader Build Script
+# PIC24 Bootloader Build Script
 # Builds the USB CDC bootloader for PIC24FJ64GB002
 
 param(
@@ -126,9 +126,8 @@ Write-Host "`nLinking..." -ForegroundColor Yellow
 $OutputElf = Join-Path $DistDir "$ProjectName.X.elf"
 $OutputHex = Join-Path $DistDir "$ProjectName.X.hex"
 
-# Use custom bootloader linker script that includes SFR definitions
-# Stack and heap allocated by linker via --heap and --stack options
-$LinkerScript = Join-Path $ScriptDir "linker\bootloader_p24FJ64GB002.gld"
+# Use STANDARD linker script (same as com.X uses)
+$LinkerScript = "C:\Program Files\Microchip\xc16\v2.10\support\PIC24F\gld\p24FJ64GB002.gld"
 $linkArgs = @("-mcpu=$MCU", "-omf=elf", "-legacy-libc", "-o", $OutputElf)
 $linkArgs += "-Wl,--script=`"$LinkerScript`",--heap=256,--stack=1024,--report-mem,--check-sections,--data-init,--pack-data,--handles,--no-gc-sections,--fill-upper=0,--stackguard=16,--no-force-link,--smart-io,-L`"$ScriptDir\linker`""
 $linkArgs += $ObjectFiles

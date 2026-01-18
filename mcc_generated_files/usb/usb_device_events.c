@@ -97,11 +97,10 @@ bool USER_USB_CALLBACK_EVENT_HANDLER(USB_EVENT event, void *pdata, uint16_t size
     return true;
 }
 
-/* USB_INTERRUPT mode ISR - disabled when using USB_POLLING mode.
- * In BOOTLOADER mode, USB is polled in main loop.
- * The IVT contains trampolines that redirect to the application's IVT.
+/* USB_INTERRUPT mode ISR - required for USB enumeration.
+ * This ISR handles USB events and must be active for reliable USB operation.
  */
-#if defined(USB_INTERRUPT) && !defined(BOOTLOADER)
+#if defined(USB_INTERRUPT)
 void __attribute__((interrupt,auto_psv)) _USB1Interrupt()
 {
     USBDeviceTasks();

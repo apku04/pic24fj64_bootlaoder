@@ -61,10 +61,10 @@ SECTIONS
 {
   .reset :
   {
-    /* Reset vector: jump to our stub first (bootloader code space). */
-    SHORT(ABSOLUTE(__reset_stub));
+    /* Reset vector: jump directly to CRT startup (bypass custom stub for now) */
+    SHORT(ABSOLUTE(__reset));
     SHORT(0x04);
-    SHORT((ABSOLUTE(__reset_stub) >> 16) & 0x7F);
+    SHORT((ABSOLUTE(__reset) >> 16) & 0x7F);
     SHORT(0x0);
   } >reset
 

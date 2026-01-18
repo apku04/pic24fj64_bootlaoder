@@ -76,7 +76,7 @@ please contact mla_licensing@microchip.com
 //(ex: USBDeviceTasks()) must be called periodically by the application firmware
 //at a minimum rate as described in the inline code comments in usb_device.c.
 //------------------------------------------------------
-#define USB_POLLING  // Bootloader uses polling mode to allow IVT remapping to app
+#define USB_INTERRUPT  // Interrupt mode required for reliable USB enumeration
 //------------------------------------------------------------------------------
 
 /* Parameter definitions are defined in usb_device.h */

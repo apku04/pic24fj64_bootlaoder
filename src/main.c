@@ -133,91 +133,26 @@ static void Bootloader_EntryWindow(uint16_t windowMs)
 
 int main(void)
 {
-    // Default to bootloader mode for the IVT trampoline.
-    // If we reset-to-app, the reset stub will flip this to 1 before jumping.
-    blVectorToApp = 0;
-
-    // Detect whether we arrived here through the reset stub.
-    blSawResetStubMagic = (blResetStubMagic == 0xCAFEU) ? 1U : 0U;
-    blResetStubMagic = 0;
-
-    // Capture reset cause before we clear RCON bits.
-    blRconAtEntry = RCON;
-
-    // Clear reset flags so the next reset cause is unambiguous.
-    RCONbits.POR = 0;
-    RCONbits.BOR = 0;
-    RCONbits.EXTR = 0;
-    RCONbits.SWR = 0;
-    RCONbits.WDTO = 0;
-    RCONbits.TRAPR = 0;
-
-    // On power-on / brown-out, clear the persistent jump diagnostics.
-    if (blLastRcon & 0x0003U)
-    {
-        blJumpAttempted = 0;
-        blJumpMagic = 0;
-        blJumpReturnCount = 0;
-        appTrapCode = 0;
-        appTrapCount = 0;
-        appTrapIntcon1 = 0;
-        appTrapRcon = 0;
-        appBootCount = 0;
-        appStage = 0;
-        appLastRcon = 0;
-    }
-
+    // All pins digital first
     AD1PCFG = 0xFFFF;
+    
+    // LED setup
     TRISAbits.TRISA2 = 0;
-    LATAbits.LATA2 = 1;
     TRISBbits.TRISB14 = 0;
+    LATAbits.LATA2 = 1;
     LATBbits.LATB14 = 0;
-
-    // If the bootloader previously requested a reset-to-app, honor it as early as
-    // possible before initializing USB/peripherals.
-    if (blJumpAttempted == BL_JUMP_ATTEMPT_MAGIC)
-    {
-        blJumpAttempted = 0;
-        blJumpReturnCount++;
-    }
-
-    if (blJumpMagic == BL_JUMP_MAGIC_VALUE)
-    {
-        blJumpMagic = 0;
-
-        if (IsValidApplication())
-        {
-            JumpToApplication();
-        }
-    }
-
-    SYSTEM_Initialize();
-
+    
+    // Initialize only what we need for USB CDC bootloader
+    // Skip SPI1, TMR2, EXT_INT, TMR1 - they cause crashes
+    PIN_MANAGER_Initialize();
+    CLOCK_Initialize();
+    INTERRUPT_Initialize();
+    USBDeviceInit();
+    USBDeviceAttach();
+    
+    // Initialize bootloader
     Bootloader_Initialize();
     Bootloader_ClearHostActivity();
-    
-    // Recovery-friendly behavior (no reset button): do NOT auto-jump to the application
-    // on power-up. Stay in the bootloader unless the host explicitly requests a jump
-    // (CMD_JUMP_APP), or the bootloader itself requested a reset-to-app.
-    if (IsValidApplication())
-    {
-        Bootloader_EntryWindow(BOOTLOADER_ENTRY_WINDOW_MS);
-    }
-
-    // Stay in bootloader
-    // Blink LEDs while also servicing USB (crucial for enumeration!)
-    
-    // Startup blink - keep USB serviced during this time!
-    for (int i = 0; i < 6; i++)
-    {
-        LATAbits.LATA2 = (i & 1);
-        LATBbits.LATB14 = (i & 1);
-        // Short delays with USB polling
-        for (uint32_t d = 0; d < 50000; d++)
-        {
-            USBDeviceTasks();
-        }
-    }
     
     LATBbits.LATB14 = 1;
     
@@ -226,35 +161,26 @@ int main(void)
     
     while(1)
     {
-        // USB polling mode - must call USBDeviceTasks() regularly
-        USBDeviceTasks();
-        
         usbState = USBGetDeviceState();
         
         if (usbState >= CONFIGURED_STATE)
         {
-            // CONFIGURED - Both LEDs solid ON
             LATAbits.LATA2 = 1;
             LATBbits.LATB14 = 1;
             
             if (!USBIsDeviceSuspended())
             {
                 Bootloader_ProcessCommand();
+                CDCTxService();  // Ensure TX data is sent
             }
         }
         else
         {
-            // Not configured yet - blink to show state
             counter++;
-            if (counter > 200000)
+            if (counter > 50000)
             {
                 counter = 0;
-                
-                // Toggle LED_A
                 LATAbits.LATA2 = !LATAbits.LATA2;
-                
-                // LED_B on if past POWERED_STATE
-                LATBbits.LATB14 = (usbState >= 3) ? 1 : 0;
             }
         }
         
