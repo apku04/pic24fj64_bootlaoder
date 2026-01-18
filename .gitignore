@@ -1,0 +1,29 @@
+# Build outputs
+build/
+dist/
+debug/
+
+# MPLAB X project files (keep configurations.xml but ignore generated)
+nbproject/private/
+nbproject/Package-*.bash
+nbproject/Makefile-*.mk
+!nbproject/Makefile-impl.mk
+!nbproject/Makefile-variables.mk
+
+# Logs
+*.log
+*.log.*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# IDE
+.vscode/
+*.code-workspace
+
+# Temp files
+*.bak
+*.tmp
+*~

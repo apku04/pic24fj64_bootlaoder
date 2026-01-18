@@ -1,0 +1,1 @@
+ -c -mcpu=$(MP_PROCESSOR_OPTION)        -g -omf=elf -DXPRJ_default=$(CND_CONF)  -legacy-libc  $(COMPARISON_BUILD)  -Os -DBOOTLOADER -msmart-io=1 -Wall -msfr-warn=off   E:\work\lorapic24_alpha\bootloader.X\mcc_generated_files\usb\usb_device_cdc.c

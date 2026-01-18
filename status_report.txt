@@ -1,0 +1,65 @@
+PIC24FJ64GB002 USB CDC Bootloader Status
+========================================
+
+Goal
+----
+Make the USB CDC bootloader permanently resident (0x0000..0x3FFF) and reliably hand off to a relocated application (com.X) at 0x4000, including correct interrupt vector forwarding.
+
+Current Diagnosis (most likely root cause)
+-----------------------------------------
+The application consistently reset right after enabling global interrupts (appStage==31). That strongly points to an interrupt vector table (IVT/AIVT) mismatch/mis-forwarding: as soon as any interrupt fires (especially USB), the CPU vectors into the wrong location and traps/resets.
+
+Key Findings
+------------
+- XC16’s official linker script shows the PIC24FJ64GB002 interrupt ordering; in particular, USB1 is NOT a low index (previous ad-hoc tables were wrong).
+- In the official XC16 script, the USB1 interrupt is the entry between Interrupt85 and Interrupt87, i.e. vector index 86.
+
+What Was Changed (Jan 2026)
+---------------------------
+Bootloader (bootloader.X)
+- bootloader.X/src/main.c
+  - Added a persistent flag blVectorToApp (in .bl_persist) used by the IVT forwarding stubs.
+  - blVectorToApp is set to 0 on bootloader entry.
+- bootloader.X/src/reset_stub.s
+  - When executing the reset-to-app handoff path, sets blVectorToApp=1 before jumping to 0x4000.
+- bootloader.X/src/ivt_table.s
+  - Now contains only mode-aware forwarding stubs (in .text) and a safe default ISR.
+  - Stubs forward to relocated app IVT/AIVT entries when blVectorToApp==1.
+- bootloader.X/linker/bootloader_p24FJ64GB002.gld
+  - Hardware IVT/AIVT is now generated in the linker script using explicit LONG(ABSOLUTE(...)) entries.
+  - Most vectors go to __bl_default_isr.
+  - Key vectors go to forwarding stubs:
+    - Traps 1..4
+    - T1 (11)
+    - T2 (15) (bootloader side uses default; app side forwards)
+    - INT1 (28)
+    - USB1 (86)
+
+Application (com.X)
+- com.X/src/app_ivt_table.s
+  - Relocated IVT/AIVT now emitted as 126 entries using .long symbol addresses (XC16 vector table format).
+  - Corrected USB1 vector index to 86.
+
+Build Status
+------------
+- bootloader.X builds successfully and programs via REAL ICE.
+- com.X builds successfully (HEX produced at com.X/build/terminal/com.X.hex).
+
+Hardware Validation Status
+--------------------------
+This VS Code environment currently reports 0 COM ports via both pyserial and Win32_SerialPort, so USB CDC enumeration cannot be confirmed from here.
+
+Next Hardware Check (on the machine where the USB cable enumerates)
+-------------------------------------------------------------------
+1) Program bootloader:
+   - bootloader.X/program.ps1 -Verify
+2) Verify bootloader enumerates:
+   - python bootloader.X/tools/upload_firmware.py --version-only
+3) Upload app + jump:
+   - python bootloader.X/tools/upload_firmware.py com.X/build/terminal/com.X.hex
+4) Confirm the bootloader does NOT immediately reappear and that appStage progresses beyond 31.
+
+Expected Outcome After These Changes
+-----------------------------------
+- Bootloader should remain functional (USB1 vector handled in bootloader mode).
+- When reset-to-app handoff happens, vectors for traps/T1/T2/INT1/USB1 should forward into the relocated application tables, avoiding the “enable interrupts -> instant reset” behavior.

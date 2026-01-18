@@ -1,0 +1,200 @@
+/*
+ * Application Linker Script for PIC24FJ64GB002 (with Bootloader)
+ * 
+ * This linker script places the application after the bootloader area.
+ * Use this script when building com.X to work with the bootloader.
+ * 
+ * Memory Map:
+ *   0x0000 - 0x3FFF: Bootloader (protected, ~15KB)
+ *   0x4000 - 0x4003: Application Reset Vector (remapped)
+ *   0x4004 - 0x40FF: Application IVT (remapped)
+ *   0x4200 - 0xABFF: Application Code (~27KB)
+ */
+
+OUTPUT_ARCH("24FJ64GB002")
+EXTERN(__resetPRI)
+EXTERN(__resetALT)
+
+/*
+ * Memory Regions - Application starts at 0x4000
+ */
+MEMORY
+{
+  data    (a!xr) : ORIGIN = 0x0800,    LENGTH = 0x2000      /* 8KB RAM (shared with bootloader) */
+  
+  /* Application vectors - remapped */
+  reset          : ORIGIN = 0x4000,    LENGTH = 0x4
+  ivt            : ORIGIN = 0x4004,    LENGTH = 0xFC
+  aivt           : ORIGIN = 0x4104,    LENGTH = 0xFC
+  
+  /* Application code */
+  program (xr)   : ORIGIN = 0x4200,    LENGTH = 0x69FE      /* ~27KB for application */
+  
+  /* Configuration bits - in application area */
+  FBS            : ORIGIN = 0xF80000,  LENGTH = 0x2
+  FSS            : ORIGIN = 0xF80002,  LENGTH = 0x2  
+  FGS            : ORIGIN = 0xF80004,  LENGTH = 0x2
+  FOSCSEL        : ORIGIN = 0xF80006,  LENGTH = 0x2
+  FOSC           : ORIGIN = 0xF80008,  LENGTH = 0x2
+  FWDT           : ORIGIN = 0xF8000A,  LENGTH = 0x2
+  FPOR           : ORIGIN = 0xF8000C,  LENGTH = 0x2
+  FICD           : ORIGIN = 0xF8000E,  LENGTH = 0x2
+}
+
+/*
+ * Application Start Address - exported for bootloader reference
+ */
+__APP_START = 0x4000;
+__APP_IVT_BASE = 0x4004;
+
+/*
+ * Section Definitions
+ */
+SECTIONS
+{
+  /*
+   * Application Reset Instruction (at 0x1800)
+   * The bootloader jumps here to start the application
+   */
+  .reset :
+  {
+    SHORT(ABSOLUTE(__reset));
+    SHORT(0x04);
+    SHORT((ABSOLUTE(__reset) >> 16) & 0x7F);
+    SHORT(0);
+  } > reset
+
+  /*
+   * Application Interrupt Vector Table (remapped at 0x1804)
+   * The bootloader's IVT can redirect here, or the application
+   * can use the AIVT feature of PIC24
+   */
+  .ivt :
+  {
+    LONG(DEFINED(__ReservedTrap0)  ? ABSOLUTE(__ReservedTrap0)  : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__OscillatorFail) ? ABSOLUTE(__OscillatorFail) : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__AddressError)   ? ABSOLUTE(__AddressError)   : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__StackError)     ? ABSOLUTE(__StackError)     : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__MathError)      ? ABSOLUTE(__MathError)      : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__ReservedTrap5)  ? ABSOLUTE(__ReservedTrap5)  : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__ReservedTrap6)  ? ABSOLUTE(__ReservedTrap6)  : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__ReservedTrap7)  ? ABSOLUTE(__ReservedTrap7)  : ABSOLUTE(__DefaultInterrupt));
+    
+    LONG(DEFINED(__INT0Interrupt)  ? ABSOLUTE(__INT0Interrupt)  : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__IC1Interrupt)   ? ABSOLUTE(__IC1Interrupt)   : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__OC1Interrupt)   ? ABSOLUTE(__OC1Interrupt)   : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__T1Interrupt)    ? ABSOLUTE(__T1Interrupt)    : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__IC2Interrupt)   ? ABSOLUTE(__IC2Interrupt)   : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__OC2Interrupt)   ? ABSOLUTE(__OC2Interrupt)   : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__T2Interrupt)    ? ABSOLUTE(__T2Interrupt)    : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__T3Interrupt)    ? ABSOLUTE(__T3Interrupt)    : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__SPI1ErrInterrupt) ? ABSOLUTE(__SPI1ErrInterrupt) : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__SPI1Interrupt)  ? ABSOLUTE(__SPI1Interrupt)  : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__U1RXInterrupt)  ? ABSOLUTE(__U1RXInterrupt)  : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__U1TXInterrupt)  ? ABSOLUTE(__U1TXInterrupt)  : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__ADC1Interrupt)  ? ABSOLUTE(__ADC1Interrupt)  : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__SI2C1Interrupt) ? ABSOLUTE(__SI2C1Interrupt) : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__MI2C1Interrupt) ? ABSOLUTE(__MI2C1Interrupt) : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__CNInterrupt)    ? ABSOLUTE(__CNInterrupt)    : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__INT1Interrupt)  ? ABSOLUTE(__INT1Interrupt)  : ABSOLUTE(__DefaultInterrupt));
+    LONG(DEFINED(__INT2Interrupt)  ? ABSOLUTE(__INT2Interrupt)  : ABSOLUTE(__DefaultInterrupt));
+    /* USB Interrupt - important for CDC */
+    LONG(DEFINED(__USB1Interrupt)  ? ABSOLUTE(__USB1Interrupt)  : ABSOLUTE(__DefaultInterrupt));
+  } > ivt
+
+  /*
+   * Code Sections
+   */
+  .text :
+  {
+    *(.init);
+    *(.user_init);
+    *(.handle);
+    *(.libc);
+    *(.libm);
+    *(.libdsp);
+    *(.text*);
+  } > program
+
+  /*
+   * Read-Only Data
+   */
+  .rodata :
+  {
+    *(.rodata*);
+    *(.const*);
+  } > program
+
+  /*
+   * Data Initialization Section
+   */
+  .dinit :
+  {
+    PROVIDE(__dinit_start = .);
+    *(.dinit);
+    PROVIDE(__dinit_end = .);
+  } > program
+
+  /*
+   * Initialized Data
+   */
+  .data :
+  {
+    PROVIDE(__data_start = .);
+    *(.data*);
+    *(.gnu.linkonce.d*);
+    PROVIDE(__data_end = .);
+  } > data AT > program
+
+  /*
+   * Uninitialized Data
+   */
+  .bss (NOLOAD) :
+  {
+    PROVIDE(__bss_start = .);
+    *(.bss*);
+    *(.gnu.linkonce.b*);
+    *(COMMON);
+    PROVIDE(__bss_end = .);
+  } > data
+
+  /*
+   * Heap (optional)
+   */
+  .heap __bss_end (NOLOAD) :
+  {
+    PROVIDE(__heap_start = .);
+    . += 0x200;  /* 512 byte heap */
+    PROVIDE(__heap_end = .);
+  } > data
+
+  /*
+   * Stack
+   */
+  .stack __heap_end (NOLOAD) :
+  {
+    PROVIDE(__stack_start = .);
+    . += 0x600;  /* 1.5KB stack for application */
+    PROVIDE(__stack_end = .);
+    PROVIDE(_stack = .);
+  } > data
+}
+
+/*
+ * Debug Info
+ */
+.comment 0 : { *(.comment) }
+.debug_info 0 : { *(.debug_info) }
+.debug_abbrev 0 : { *(.debug_abbrev) }
+.debug_line 0 : { *(.debug_line) }
+.debug_frame 0 : { *(.debug_frame) }
+.debug_str 0 : { *(.debug_str) }
+.debug_loc 0 : { *(.debug_loc) }
+.debug_macinfo 0 : { *(.debug_macinfo) }
+.debug_ranges 0 : { *(.debug_ranges) }
+
+/*
+ * Provide symbols for code
+ */
+PROVIDE(_SPLIM = __stack_end - 32);
+PROVIDE(__SP_init = __stack_end);

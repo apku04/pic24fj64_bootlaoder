@@ -1,0 +1,1 @@
+ -c -mcpu=$(MP_PROCESSOR_OPTION)  -omf=elf -DXPRJ_default=$(CND_CONF)  -legacy-libc  -DBOOTLOADER -Wa,-g,--no-relax$(MP_EXTRA_AS_POST) E:\work\lorapic24_alpha\bootloader.X\mcc_generated_files\memory\flash.s

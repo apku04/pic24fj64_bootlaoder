@@ -1,0 +1,575 @@
+/*
+ * Bootloader Linker Script for PIC24FJ64GB002
+ * 
+ * This linker script places the bootloader at the beginning of flash
+ * and reserves space for the application starting at 0x4000.
+ * 
+ * Memory Map:
+ *   0x0000 - 0x0003: Reset Vector (points to bootloader)
+ *   0x0004 - 0x00FF: Interrupt Vector Table (trampolines to app IVT)
+ *   0x0100 - 0x01FF: Alternate IVT
+ *   0x0200 - 0x3FFF: Bootloader Code (~15KB)
+ *   0x4000 - 0xABFF: Application Area (~27KB)
+ */
+
+OUTPUT_ARCH("24FJ64GB002")
+CRT0_STARTUP(crt0_standard.o)
+CRT1_STARTUP(crt1_standard.o)
+CRT_STARTMODE(crt_start_mode_normal)
+
+/*
+ * Memory Regions - Bootloader only uses lower portion
+ * Note: USB BDT requires 512-byte alignment. Place USB RAM at 0x800 (already aligned).
+ * 
+ * Updated Memory Map:
+ *   0x0000 - 0x0003: Reset Vector
+ *   0x0004 - 0x00FF: Interrupt Vector Table  
+ *   0x0100 - 0x01FF: Alternate IVT
+ *   0x0200 - 0x3FFF: Bootloader Code (~15KB) - Expanded for USB stack
+ *   0x4000 - 0xABFF: Application Area (~27KB)
+ */
+MEMORY
+{
+  /* USB BDT must be 512-byte aligned. Place at 0x800 which is naturally aligned.
+     Reserve extra space for EP0 buffers placed in same section. */
+  usb_ram (a!xr) : ORIGIN = 0x800,    LENGTH = 0x400    /* USB BDT + buffers */
+  data  (a!xr)   : ORIGIN = 0xC00,    LENGTH = 0x1C00   /* Main RAM after USB section */
+  reset          : ORIGIN = 0x0,      LENGTH = 0x4
+  ivt            : ORIGIN = 0x4,      LENGTH = 0xFC
+  aivt           : ORIGIN = 0x104,    LENGTH = 0xFC
+  program (xr)   : ORIGIN = 0x200,    LENGTH = 0x3E00   /* Bootloader code - ~15KB */
+  FBS            : ORIGIN = 0xF80000, LENGTH = 0x2
+  FSS            : ORIGIN = 0xF80002, LENGTH = 0x2
+  FGS            : ORIGIN = 0xF80004, LENGTH = 0x2
+  FOSCSEL        : ORIGIN = 0xF80006, LENGTH = 0x2
+  FOSC           : ORIGIN = 0xF80008, LENGTH = 0x2
+  FWDT           : ORIGIN = 0xF8000A, LENGTH = 0x2
+  FPOR           : ORIGIN = 0xF8000C, LENGTH = 0x2
+  FICD           : ORIGIN = 0xF8000E, LENGTH = 0x2
+}
+
+__CODE_BASE = 0x200;
+__CODE_LENGTH = 0x3E00;
+__DATA_BASE = 0xC00;
+__DATA_LENGTH = 0x1C00;
+__USB_RAM_BASE = 0x800;
+__IVT_BASE = 0x4;
+__APTS_BASE = 0x0;
+__APTS_LENGTH = 0x0;
+
+SECTIONS
+{
+  .reset :
+  {
+    /* Reset vector: jump to our stub first (bootloader code space). */
+    SHORT(ABSOLUTE(__reset_stub));
+    SHORT(0x04);
+    SHORT((ABSOLUTE(__reset_stub) >> 16) & 0x7F);
+    SHORT(0x0);
+  } >reset
+
+  /*
+  ** IVT - Interrupt Vector Table
+  **
+  ** We generate the IVT here (126 entries) so the linker emits the correct
+  ** per-vector encoding for this device. Most entries go to a safe default ISR;
+  ** key vectors jump into mode-aware forwarding stubs in src/ivt_table.s.
+  */
+  .ivt 0x0004 :
+  {
+    LONG(ABSOLUTE(__bl_default_isr)); /* 0  ReservedTrap0 */
+    LONG(ABSOLUTE(__bl_fwd_ivt_1));  /* 1  OscillatorFail */
+    LONG(ABSOLUTE(__bl_fwd_ivt_2));  /* 2  AddressError */
+    LONG(ABSOLUTE(__bl_fwd_ivt_3));  /* 3  StackError */
+    LONG(ABSOLUTE(__bl_fwd_ivt_4));  /* 4  MathError */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 5 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 6 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 7 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 8  INT0 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 9  IC1 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 10 OC1 */
+    LONG(ABSOLUTE(__bl_fwd_ivt_11)); /* 11 T1 (bootloader uses this) */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 12 Interrupt4 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 13 IC2 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 14 OC2 */
+    LONG(ABSOLUTE(__bl_fwd_ivt_15)); /* 15 T2 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 16 T3 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 17 SPI1E */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 18 SPI1 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 19 U1RX */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 20 U1TX */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 21 ADC1 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 22 Interrupt14 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 23 Interrupt15 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 24 SI2C1 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 25 MI2C1 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 26 COMP */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 27 CN */
+    LONG(ABSOLUTE(__bl_fwd_ivt_28)); /* 28 INT1 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 29 Interrupt21 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 30 Interrupt22 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 31 Interrupt23 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 32 Interrupt24 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 33 OC3 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 34 OC4 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 35 T4 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 36 T5 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 37 INT2 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 38 U2RX */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 39 U2TX */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 40 SPI2E */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 41 SPI2 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 42 Interrupt34 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 43 Interrupt35 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 44 Interrupt36 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 45 IC3 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 46 IC4 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 47 IC5 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 48 Interrupt40 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 49 OC5 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 50 Interrupt42 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 51 Interrupt43 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 52 Interrupt44 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 53 PMP */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 54 Interrupt46 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 55 Interrupt47 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 56 Interrupt48 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 57 SI2C2 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 58 MI2C2 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 59 Interrupt51 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 60 Interrupt52 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 61 Interrupt53 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 62 Interrupt54 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 63 Interrupt55 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 64 Interrupt56 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 65 Interrupt57 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 66 Interrupt58 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 67 Interrupt59 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 68 Interrupt60 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 69 Interrupt61 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 70 RTCC */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 71 Interrupt63 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 72 Interrupt64 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 73 U1Err */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 74 U2Err */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 75 CRC */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 76 Interrupt68 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 77 Interrupt69 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 78 Interrupt70 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 79 Interrupt71 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 80 LVD */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 81 Interrupt73 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 82 Interrupt74 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 83 Interrupt75 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 84 Interrupt76 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 85 CTMU */
+    LONG(ABSOLUTE(__bl_fwd_ivt_86)); /* 86 USB1 (bootloader uses this) */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 87 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 88 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 89 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 90 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 91 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 92 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 93 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 94 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 95 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 96 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 97 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 98 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 99 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 100 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 101 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 102 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 103 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 104 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 105 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 106 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 107 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 108 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 109 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 110 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 111 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 112 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 113 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 114 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 115 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 116 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 117 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 118 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 119 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 120 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 121 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 122 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 123 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 124 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 125 */
+  } >ivt
+
+  /*
+  ** AIVT - Alternate Interrupt Vector Table
+  ** Generated here for consistency with the IVT.
+  */
+  .aivt 0x0104 :
+  {
+    LONG(ABSOLUTE(__bl_default_isr)); /* 0 */
+    LONG(ABSOLUTE(__bl_fwd_aivt_1));  /* 1 */
+    LONG(ABSOLUTE(__bl_fwd_aivt_2));  /* 2 */
+    LONG(ABSOLUTE(__bl_fwd_aivt_3));  /* 3 */
+    LONG(ABSOLUTE(__bl_fwd_aivt_4));  /* 4 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 5 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 6 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 7 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 8 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 9 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 10 */
+    LONG(ABSOLUTE(__bl_fwd_aivt_11)); /* 11 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 12 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 13 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 14 */
+    LONG(ABSOLUTE(__bl_fwd_aivt_15)); /* 15 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 16 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 17 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 18 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 19 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 20 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 21 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 22 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 23 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 24 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 25 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 26 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 27 */
+    LONG(ABSOLUTE(__bl_fwd_aivt_28)); /* 28 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 29 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 30 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 31 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 32 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 33 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 34 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 35 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 36 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 37 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 38 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 39 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 40 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 41 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 42 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 43 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 44 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 45 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 46 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 47 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 48 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 49 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 50 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 51 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 52 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 53 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 54 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 55 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 56 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 57 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 58 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 59 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 60 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 61 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 62 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 63 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 64 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 65 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 66 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 67 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 68 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 69 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 70 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 71 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 72 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 73 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 74 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 75 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 76 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 77 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 78 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 79 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 80 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 81 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 82 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 83 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 84 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 85 */
+    LONG(ABSOLUTE(__bl_fwd_aivt_86)); /* 86 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 87 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 88 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 89 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 90 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 91 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 92 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 93 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 94 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 95 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 96 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 97 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 98 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 99 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 100 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 101 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 102 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 103 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 104 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 105 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 106 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 107 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 108 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 109 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 110 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 111 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 112 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 113 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 114 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 115 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 116 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 117 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 118 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 119 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 120 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 121 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 122 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 123 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 124 */
+    LONG(ABSOLUTE(__bl_default_isr)); /* 125 */
+  } >aivt
+
+  .text :
+  {
+    *(.init);
+    *(.user_init);
+    KEEP (*(.handle));
+    KEEP (*(.isr*));
+    *(.libc) *(.libm) *(.libdsp);
+    *(.lib*);
+    *(.text);
+  } >program
+
+  .const :
+  {
+    *(.const);
+    *(.const.*);
+  } >program
+
+  .dinit :
+  {
+    *(.dinit);
+  } >program
+
+  .text :
+  {
+    *(.text.*);
+  } >program
+
+  .FBS : { *(.FBS) } >FBS
+  .FSS : { *(.FSS) } >FSS
+  .FGS : { *(.FGS) } >FGS
+  .FOSCSEL : { *(.FOSCSEL) } >FOSCSEL
+  .FOSC : { *(.FOSC) } >FOSC
+  .FWDT : { *(.FWDT) } >FWDT
+  .FPOR : { *(.FPOR) } >FPOR
+  .FICD : { *(.FICD) } >FICD
+
+  /* USB Buffer Descriptor Table (BDT) - must be 512-byte aligned and in USB RAM */
+  .usb_bdt (NOLOAD):
+  {
+    . = ALIGN(512);
+    *(.usb_bdt);
+  } >usb_ram
+
+  /* Bootloader persistent state (survives RESET).
+     Reserve a small window in normal data RAM (0x800+) so it is
+     addressable with near-data instructions and does not collide with USB RAM.
+     The application linker script must also reserve this address range. */
+  .bl_persist 0x1200 (NOLOAD):
+  {
+    *(.bl_persist);
+  } >data
+
+  /* Shared application fault diagnostics (written by app, read by bootloader). */
+  .app_persist 0x1240 (NOLOAD):
+  {
+    *(.app_persist);
+  } >data
+
+  .nbss (NOLOAD):
+  {
+    *(.nbss);
+    *(.nbss.*);
+  } >data
+
+  .ndata :
+  {
+    *(.ndata);
+    *(.ndata.*);
+  } >data
+
+  .ndconst :
+  {
+    *(.ndconst);
+    *(.ndconst.*);
+  } >data
+
+  .pbss (NOLOAD):
+  {
+    *(.pbss);
+    *(.pbss.*);
+  } >data
+
+  .data :
+  {
+    *(.data);
+    *(.data.*);
+  } >data
+
+  .bss (NOLOAD):
+  {
+    *(.bss);
+    *(.bss.*);
+    *(COMMON);
+  } >data
+
+  /* Ensure heap is allocated from normal data RAM, not USB RAM. */
+  .heap (NOLOAD):
+  {
+    *(.heap);
+  } >data
+  
+  /* Let XC16 linker auto-allocate heap and stack using --heap and --stack options */
+}
+
+PROVIDE(__resetPRI = __reset);
+PROVIDE(__resetALT = __reset);
+
+__NO_HANDLES = 1;
+__IVT_BASE  = 0x04;
+__AIVT_BASE = 0x104;
+
+PROVIDE(__ReservedTrap0 = __DefaultInterrupt);
+PROVIDE(__OscillatorFail = __DefaultInterrupt);
+PROVIDE(__AddressError = __DefaultInterrupt);
+PROVIDE(__StackError = __DefaultInterrupt);
+PROVIDE(__MathError = __DefaultInterrupt);
+PROVIDE(__ReservedTrap5 = __DefaultInterrupt);
+PROVIDE(__ReservedTrap6 = __DefaultInterrupt);
+PROVIDE(__ReservedTrap7 = __DefaultInterrupt);
+PROVIDE(__INT0Interrupt = __DefaultInterrupt);
+PROVIDE(__IC1Interrupt = __DefaultInterrupt);
+PROVIDE(__OC1Interrupt = __DefaultInterrupt);
+PROVIDE(__T1Interrupt = __DefaultInterrupt);
+PROVIDE(__Interrupt4 = __DefaultInterrupt);
+PROVIDE(__Interrupt5 = __DefaultInterrupt);
+PROVIDE(__Interrupt6 = __DefaultInterrupt);
+PROVIDE(__Interrupt7 = __DefaultInterrupt);
+PROVIDE(__Interrupt8 = __DefaultInterrupt);
+PROVIDE(__Interrupt9 = __DefaultInterrupt);
+PROVIDE(__Interrupt10 = __DefaultInterrupt);
+PROVIDE(__Interrupt11 = __DefaultInterrupt);
+PROVIDE(__Interrupt12 = __DefaultInterrupt);
+PROVIDE(__Interrupt13 = __DefaultInterrupt);
+PROVIDE(__Interrupt14 = __DefaultInterrupt);
+PROVIDE(__Interrupt15 = __DefaultInterrupt);
+PROVIDE(__Interrupt16 = __DefaultInterrupt);
+PROVIDE(__Interrupt17 = __DefaultInterrupt);
+PROVIDE(__Interrupt18 = __DefaultInterrupt);
+PROVIDE(__Interrupt19 = __DefaultInterrupt);
+PROVIDE(__Interrupt20 = __DefaultInterrupt);
+PROVIDE(__Interrupt21 = __DefaultInterrupt);
+PROVIDE(__Interrupt22 = __DefaultInterrupt);
+PROVIDE(__Interrupt23 = __DefaultInterrupt);
+PROVIDE(__Interrupt24 = __DefaultInterrupt);
+PROVIDE(__Interrupt25 = __DefaultInterrupt);
+PROVIDE(__Interrupt26 = __DefaultInterrupt);
+PROVIDE(__Interrupt27 = __DefaultInterrupt);
+PROVIDE(__Interrupt28 = __DefaultInterrupt);
+PROVIDE(__Interrupt29 = __DefaultInterrupt);
+PROVIDE(__USB1Interrupt = __DefaultInterrupt);
+PROVIDE(__Interrupt31 = __DefaultInterrupt);
+PROVIDE(__Interrupt32 = __DefaultInterrupt);
+PROVIDE(__Interrupt33 = __DefaultInterrupt);
+PROVIDE(__Interrupt34 = __DefaultInterrupt);
+PROVIDE(__Interrupt35 = __DefaultInterrupt);
+PROVIDE(__Interrupt36 = __DefaultInterrupt);
+PROVIDE(__Interrupt37 = __DefaultInterrupt);
+PROVIDE(__Interrupt38 = __DefaultInterrupt);
+PROVIDE(__Interrupt39 = __DefaultInterrupt);
+PROVIDE(__Interrupt40 = __DefaultInterrupt);
+PROVIDE(__Interrupt41 = __DefaultInterrupt);
+PROVIDE(__Interrupt42 = __DefaultInterrupt);
+PROVIDE(__Interrupt43 = __DefaultInterrupt);
+PROVIDE(__Interrupt44 = __DefaultInterrupt);
+PROVIDE(__INT1Interrupt = __DefaultInterrupt);
+PROVIDE(__INT2Interrupt = __DefaultInterrupt);
+PROVIDE(__Interrupt47 = __DefaultInterrupt);
+PROVIDE(__Interrupt48 = __DefaultInterrupt);
+PROVIDE(__Interrupt49 = __DefaultInterrupt);
+PROVIDE(__Interrupt50 = __DefaultInterrupt);
+PROVIDE(__Interrupt51 = __DefaultInterrupt);
+PROVIDE(__Interrupt52 = __DefaultInterrupt);
+PROVIDE(__Interrupt53 = __DefaultInterrupt);
+
+PROVIDE(__AltINT0Interrupt = __DefaultInterrupt);
+PROVIDE(__AltIC1Interrupt = __DefaultInterrupt);
+PROVIDE(__AltOC1Interrupt = __DefaultInterrupt);
+PROVIDE(__AltT1Interrupt = __DefaultInterrupt);
+PROVIDE(__AltInterrupt4 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt5 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt6 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt7 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt8 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt9 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt10 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt11 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt12 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt13 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt14 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt15 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt16 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt17 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt18 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt19 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt20 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt21 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt22 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt23 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt24 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt25 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt26 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt27 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt28 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt29 = __DefaultInterrupt);
+PROVIDE(__AltUSB1Interrupt = __DefaultInterrupt);
+PROVIDE(__AltInterrupt31 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt32 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt33 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt34 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt35 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt36 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt37 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt38 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt39 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt40 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt41 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt42 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt43 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt44 = __DefaultInterrupt);
+PROVIDE(__AltINT1Interrupt = __DefaultInterrupt);
+PROVIDE(__AltINT2Interrupt = __DefaultInterrupt);
+PROVIDE(__AltInterrupt47 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt48 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt49 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt50 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt51 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt52 = __DefaultInterrupt);
+PROVIDE(__AltInterrupt53 = __DefaultInterrupt);
+
+/*
+ * Include device-specific SFR definitions
+ * This brings in all the peripheral register addresses from the default device linker script
+ */
+INCLUDE "E:/work/lorapic24_alpha/bootloader.X/linker/p24FJ64GB002_sfr.gld"
