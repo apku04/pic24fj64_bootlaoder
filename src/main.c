@@ -77,10 +77,14 @@ static void JumpToApplication(void)
     T1CONbits.TON = 0;
     T2CONbits.TON = 0;
     SPI1STATbits.SPIEN = 0;
+    U1CONbits.USBEN = 0;  // Disable USB module
     
     // Clear all interrupt flags and disable all interrupts
     IFS0 = 0; IFS1 = 0; IFS2 = 0; IFS3 = 0; IFS4 = 0; IFS5 = 0;
     IEC0 = 0; IEC1 = 0; IEC2 = 0; IEC3 = 0; IEC4 = 0; IEC5 = 0;
+    
+    // Set flag so ISRs forward to app vectors
+    blVectorToApp = 1;
     
     // Jump to application reset vector using assembly GOTO
     asm("goto 0x4000");

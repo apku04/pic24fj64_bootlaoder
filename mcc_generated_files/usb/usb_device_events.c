@@ -99,10 +99,23 @@ bool USER_USB_CALLBACK_EVENT_HANDLER(USB_EVENT event, void *pdata, uint16_t size
 
 /* USB_INTERRUPT mode ISR - required for USB enumeration.
  * This ISR handles USB events and must be active for reliable USB operation.
+ * When blVectorToApp is set, forwards to app's USB1 handler at 0x415C
  */
 #if defined(USB_INTERRUPT)
+
+// Forward declaration - defined in main.c
+extern volatile uint16_t blVectorToApp;
+
+// App's USB1 vector address: 0x4004 + (86 * 4) = 0x4004 + 0x158 = 0x415C
+#define APP_USB1_VECTOR 0x415C
+
 void __attribute__((interrupt,auto_psv)) _USB1Interrupt()
 {
+    if (blVectorToApp)
+    {
+        // Forward to app's USB1 vector
+        asm("goto 0x415C");
+    }
     USBDeviceTasks();
 }
 #endif
