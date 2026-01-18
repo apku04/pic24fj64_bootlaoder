@@ -133,6 +133,9 @@ static void Bootloader_EntryWindow(uint16_t windowMs)
 
 int main(void)
 {
+    // Bootloader mode - IVT forwards to bootloader ISRs
+    blVectorToApp = 0;
+    
     // All pins digital first
     AD1PCFG = 0xFFFF;
     
@@ -143,7 +146,7 @@ int main(void)
     LATBbits.LATB14 = 0;
     
     // Initialize only what we need for USB CDC bootloader
-    // Skip SPI1, TMR2, EXT_INT, TMR1 - they cause crashes
+    // Skip SPI1, TMR2, EXT_INT, TMR1 - they cause crashes with BOOTLOADER macro
     PIN_MANAGER_Initialize();
     CLOCK_Initialize();
     INTERRUPT_Initialize();

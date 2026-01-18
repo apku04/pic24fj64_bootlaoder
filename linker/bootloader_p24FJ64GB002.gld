@@ -163,7 +163,7 @@ SECTIONS
     LONG(ABSOLUTE(__bl_default_isr)); /* 83 Interrupt75 */
     LONG(ABSOLUTE(__bl_default_isr)); /* 84 Interrupt76 */
     LONG(ABSOLUTE(__bl_default_isr)); /* 85 CTMU */
-    LONG(ABSOLUTE(__bl_fwd_ivt_86)); /* 86 USB1 (bootloader uses this) */
+    LONG(ABSOLUTE(__USB1Interrupt)); /* 86 USB1 - direct to ISR (no forwarding) */
     LONG(ABSOLUTE(__bl_default_isr)); /* 87 */
     LONG(ABSOLUTE(__bl_default_isr)); /* 88 */
     LONG(ABSOLUTE(__bl_default_isr)); /* 89 */
