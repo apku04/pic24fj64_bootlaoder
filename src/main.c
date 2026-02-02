@@ -83,6 +83,9 @@ static void JumpToApplication(void)
     IFS0 = 0; IFS1 = 0; IFS2 = 0; IFS3 = 0; IFS4 = 0; IFS5 = 0;
     IEC0 = 0; IEC1 = 0; IEC2 = 0; IEC3 = 0; IEC4 = 0; IEC5 = 0;
     
+    // Use primary IVT (not alternate) - app expects interrupts via IVT at 0x4004
+    INTCON2bits.ALTIVT = 0;
+    
     // Set flag so ISRs forward to app vectors
     blVectorToApp = 1;
     
@@ -148,6 +151,30 @@ int main(void)
     TRISBbits.TRISB14 = 0;
     LATAbits.LATA2 = 1;
     LATBbits.LATB14 = 0;
+    
+    // Check if we should jump to app (set by previous 'J' command before reset)
+    if (blJumpMagic == BL_JUMP_MAGIC_VALUE)
+    {
+        blJumpMagic = 0;  // Clear so we don't loop
+        
+        // Need minimal clock init before jump
+        CLOCK_Initialize();
+        
+        if (IsValidApplication())
+        {
+            blStubToAppCount++;
+            JumpToApplication();
+        }
+    }
+    
+    // On normal power cycle: if valid app exists, jump to it immediately
+    CLOCK_Initialize();
+    if (IsValidApplication())
+    {
+        blStubToAppCount++;
+        blVectorToApp = 1;
+        asm("goto 0x4000");
+    }
     
     // Initialize only what we need for USB CDC bootloader
     // Skip SPI1, TMR2, EXT_INT, TMR1 - they cause crashes with BOOTLOADER macro
